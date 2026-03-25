@@ -1,0 +1,23 @@
+# WireGuard keys
+*.key
+*.conf
+*.psk
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# SSH
+*.pem
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Environment
+.envrc
+.env
