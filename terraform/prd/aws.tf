@@ -23,3 +23,16 @@ module "route_table" {
   public_subnet_ids   = local.public_subnet_ids
 }
 
+module "security_group" {
+  source = "../modules/aws/security_group"
+  env    = local.env
+  vpc_id = module.vpc.id
+}
+
+module "iam_role" {
+  source     = "../modules/aws/iam_role"
+  env        = local.env
+  region     = local.region
+  account_id = local.account_id
+}
+
