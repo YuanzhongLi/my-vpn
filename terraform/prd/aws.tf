@@ -36,3 +36,11 @@ module "iam_role" {
   account_id = local.account_id
 }
 
+module "ec2" {
+  source                    = "../modules/aws/ec2"
+  env                       = local.env
+  subnet_id                 = module.subnet.id_public_1a
+  security_group_id         = module.security_group.id_vpn
+  iam_instance_profile_name = module.iam_role.instance_profile_name_vpn
+}
+

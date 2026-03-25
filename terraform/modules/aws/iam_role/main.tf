@@ -40,6 +40,11 @@ data "aws_iam_policy_document" "vpn" {
   }
 }
 
+resource "aws_iam_role_policy_attachment" "ssm_core" {
+  role       = aws_iam_role.vpn.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
 resource "aws_iam_role_policy" "vpn" {
   name   = "my-vpn-policy-vpn-${var.env}"
   role   = aws_iam_role.vpn.id
