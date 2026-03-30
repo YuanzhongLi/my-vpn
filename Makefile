@@ -44,4 +44,7 @@ status-vpn-instance: ## Show VPN EC2 instance status
 		--query 'Reservations[0].Instances[0].{InstanceId:InstanceId,State:State.Name,PublicIp:PublicIpAddress,PrivateIp:PrivateIpAddress,InstanceType:InstanceType}' \
 		--output table
 
-.PHONY: help ssm-vpn-instance start-vpn-instance stop-vpn-instance status-vpn-instance
+dns-ns-show: ## Show Route53 NS records for DNS delegation
+	@cd $(TERRAFORM_DIR) && terraform output -json route53_vpn_name_servers | jq -r '.[]'
+
+.PHONY: help ssm-vpn-instance start-vpn-instance stop-vpn-instance status-vpn-instance dns-ns-show

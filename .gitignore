@@ -7,6 +7,8 @@
 .terraform/
 *.tfstate
 *.tfstate.backup
+*.tfvars
+!*.tfvars.example
 
 # SSH
 *.pem

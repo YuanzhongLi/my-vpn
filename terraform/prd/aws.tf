@@ -36,6 +36,12 @@ module "iam_role" {
   account_id = local.account_id
 }
 
+module "route53" {
+  source    = "../modules/aws/route53"
+  env       = local.env
+  subdomain = var.subdomain
+}
+
 module "ec2" {
   source                    = "../modules/aws/ec2"
   env                       = local.env
