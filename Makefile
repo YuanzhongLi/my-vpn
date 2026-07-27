@@ -128,4 +128,22 @@ add-client: ## Add a WireGuard client peer and print its config + QR code (usage
 	$(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'StandardOutputContent' --output text && \
 	$(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'StandardErrorContent' --output text
 
-.PHONY: help init-backend setup-config tf-init tf-apply start-vpn stop-vpn status-vpn ssm-vpn dns-ns-show add-client
+list-clients: ## List registered WireGuard client peers (name + public key + handshake status)
+	@INSTANCE_ID=$(INSTANCE_ID) && \
+	SCRIPT="set -euo pipefail; cd /etc/wireguard; echo '=== Registered clients ==='; found=0; for f in *_public.key; do [ -e \"\$$f\" ] || continue; [ \"\$$f\" = server_public.key ] && continue; found=1; echo \"\$${f%_public.key}: \$$(cat \$$f)\"; done; [ \"\$$found\" = 1 ] || echo '(none)'; echo; echo '=== wg show wg0 ==='; wg show wg0" && \
+	CMD_ID=$$($(AWS) ssm send-command --cli-input-json "$$(jq -n --arg id "$$INSTANCE_ID" --arg s "$$SCRIPT" '{InstanceIds:[$$id], DocumentName:"AWS-RunShellScript", Parameters:{commands:[$$s]}}')" --query 'Command.CommandId' --output text) && \
+	while STATUS=$$($(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'Status' --output text 2>/dev/null); [ "$$STATUS" = "InProgress" ] || [ "$$STATUS" = "Pending" ]; do sleep 2; done && \
+	$(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'StandardOutputContent' --output text && \
+	$(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'StandardErrorContent' --output text
+
+remove-client: ## Remove a registered WireGuard client peer (usage: make remove-client NAME=client1)
+	@if [ -z "$(NAME)" ]; then echo "Usage: make remove-client NAME=<client-name>"; exit 1; fi
+	@NAME=$(NAME) && \
+	INSTANCE_ID=$(INSTANCE_ID) && \
+	SCRIPT="set -euo pipefail; cd /etc/wireguard; if [ ! -f $${NAME}_public.key ]; then echo \"No such client: $${NAME}\" >&2; exit 1; fi; PUB=\$$(cat $${NAME}_public.key); wg set wg0 peer \$$PUB remove; wg-quick save wg0; rm -f $${NAME}_public.key; echo \"Removed client $${NAME} (pubkey \$$PUB)\"" && \
+	CMD_ID=$$($(AWS) ssm send-command --cli-input-json "$$(jq -n --arg id "$$INSTANCE_ID" --arg s "$$SCRIPT" '{InstanceIds:[$$id], DocumentName:"AWS-RunShellScript", Parameters:{commands:[$$s]}}')" --query 'Command.CommandId' --output text) && \
+	while STATUS=$$($(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'Status' --output text 2>/dev/null); [ "$$STATUS" = "InProgress" ] || [ "$$STATUS" = "Pending" ]; do sleep 2; done && \
+	$(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'StandardOutputContent' --output text && \
+	$(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'StandardErrorContent' --output text
+
+.PHONY: help init-backend setup-config tf-init tf-apply start-vpn stop-vpn status-vpn ssm-vpn dns-ns-show add-client list-clients remove-client

@@ -95,6 +95,32 @@ make ssm-vpn
 make stop-vpn
 ```
 
+### 2回目以降の利用（`make stop-vpn`済みの状態から）
+
+`make stop-vpn`はEC2の停止とEIPの解放のみで、EC2のディスク（WireGuardの鍵・設定）やTerraformで構築したインフラはそのまま残ります。iPhone側に登録済みのトンネル設定も端末に保存されたままなので、再度使うときは以下の2ステップだけで元に戻ります。
+
+```bash
+make start-vpn    # EC2起動 + EIP再割当 + DNS更新
+make status-vpn   # 状態確認（任意）
+```
+
+その後iPhoneのWireGuardアプリでトンネルをONにすれば、以前と同じ設定のまま接続できます。初期設定・インフラ構築・DNS委譲（1〜4）やクライアント登録（6）を再度行う必要はありません。
+
+> 再度必要になるのは、`make tf-apply` を実行してインフラ構成を変更した場合です。EC2のAMIはSSMパラメータ経由で常に最新のAmazon Linuxを参照する設計のため、`tf-apply`のたびにAMIドリフトでEC2が再作成され、WireGuardサーバー鍵も再生成されます。この場合はクライアント（6）の再登録が必要です。
+
+### クライアント（iPhone等）の管理・クリーンアップ
+
+デバイスを追加するたびに `make add-client NAME=<name> IP=10.0.0.x` を実行すると、サーバー上にピアが増えていきます。登録済みクライアントの一覧確認・削除は以下のコマンドで行えます。
+
+```bash
+make list-clients              # 登録済みクライアント一覧 + 接続状況(wg show)を表示
+make remove-client NAME=<name> # 指定したクライアントのピアを削除
+```
+
+- `IP`は`10.0.0.2`, `10.0.0.3`, ... のように未使用のアドレスを割り当ててください（`make list-clients`の`wg show`出力の`allowed ips`で使用済みIPを確認できます）
+- 使わなくなった端末や、誤って外部に漏れた設定・鍵がある場合は `make remove-client` で必ず削除してください
+- `make add-client` は同じ`NAME`を指定すると鍵ペアを再生成して古いピアを新しい鍵で上書きします（鍵の再発行に利用できます）
+
 ## ライセンス
 
 Private
