@@ -104,9 +104,23 @@ make start-vpn    # EC2起動 + EIP再割当 + DNS更新
 make status-vpn   # 状態確認（任意）
 ```
 
-その後iPhoneのWireGuardアプリでトンネルをONにすれば、以前と同じ設定のまま接続できます。初期設定・インフラ構築・DNS委譲（1〜4）やクライアント登録（6）を再度行う必要はありません。
+初期設定・インフラ構築・DNS委譲（1〜4）やクライアント登録（6）を再度行う必要はありません（例外は下記の注記を参照）。EC2側の準備ができたら、iPhone側で以下を行ってください。
 
-> 再度必要になるのは、`make tf-apply` を実行してインフラ構成を変更した場合です。EC2のAMIはSSMパラメータ経由で常に最新のAmazon Linuxを参照する設計のため、`tf-apply`のたびにAMIドリフトでEC2が再作成され、WireGuardサーバー鍵も再生成されます。この場合はクライアント（6）の再登録が必要です。
+1. WireGuardアプリを開き、以前作成したトンネル（例:「Japan VPN」）のスイッチをON
+2. トンネル名の下に「Handshake: X秒前」のような表示が出ることを確認（表示されない/更新されない場合は接続失敗）
+
+接続できたら、以下で動作確認してください。
+
+| 確認内容 | 方法 | 期待結果 |
+|---------|------|---------|
+| サーバーIP | Safariで `ifconfig.me` を開く | `make status-vpn`のEIPと一致 |
+| 接続先地域 | `whatismyipaddress.com` を開く | Tokyo, Japan と表示される |
+| DNSリーク | `dnsleaktest.com` でStandard testを実行 | Cloudflare DNSのみ表示される |
+| サーバー側の状態 | `make list-clients` を実行 | 対象クライアントの行に直近のhandshakeが記録されている（`wg show wg0`出力） |
+
+うまく繋がらない場合は、DNSが浸透するまで待つ（`make start-vpn`はTTL 60秒でAレコードを更新）か、`make status-vpn`でEC2・EIP・DNSの状態を確認してください。
+
+> **例外**: `make tf-apply` を実行してインフラ構成を変更した場合は再登録が必要です。EC2のAMIはSSMパラメータ経由で常に最新のAmazon Linuxを参照する設計のため、`tf-apply`のたびにAMIドリフトでEC2が再作成され、WireGuardサーバー鍵も再生成されます。この場合はiPhone側の古いトンネルはサーバーの鍵不一致でHandshakeが確立しなくなるため、クライアント（6）を再登録し、iPhone側でも新しい設定（QRコード）で再度トンネルを作成してください。
 
 ### クライアント（iPhone等）の管理・クリーンアップ
 
