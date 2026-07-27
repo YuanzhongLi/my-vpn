@@ -31,7 +31,69 @@
 
 ## クイックスタート
 
-> 実装後に追加予定
+セットアップ・運用に必要な操作はすべて `make` コマンドで実行できます。利用可能なコマンド一覧は `make help` で確認できます。
+
+### 前提条件
+
+- AWS CLIプロファイルが設定済みであること
+- [Terraform](https://developer.hashicorp.com/terraform) v1.14系がインストールされていること（`terraform/.terraform-version`で固定）
+- `jq` / `dig` コマンドがインストールされていること
+- 委譲先となるサブドメインの親ドメインのRoute53ホストゾーンを別途保有していること
+- iPhoneに [WireGuard公式アプリ](https://apps.apple.com/app/wireguard/id1441195209) がインストール済みであること
+
+### 1. 初期設定
+
+```bash
+make setup-config
+```
+
+生成された `terraform/prd/.envrc`（`AWS_PROFILE`）と `terraform/prd/terraform.tfvars`（`subdomain`）を編集してください。
+
+### 2. Terraformバックエンド作成（初回のみ）
+
+```bash
+make init-backend
+```
+
+### 3. インフラ構築
+
+```bash
+make tf-init
+make tf-apply
+```
+
+VPC・EC2（WireGuard）・セキュリティグループ・Route53ホストゾーンなどが作成されます。
+
+### 4. DNS委譲（初回のみ、手動）
+
+```bash
+make dns-ns-show
+```
+
+表示された4つのNSレコードを、親ドメイン側のRoute53ホストゾーンにNSレコードとして追加してください（詳細: [Step5](docs/implementation-plan/step05-dns.md)）。
+
+### 5. VPN起動・状態確認
+
+```bash
+make start-vpn
+make status-vpn
+```
+
+### 6. iPhoneクライアント設定・接続テスト
+
+```bash
+make ssm-vpn
+```
+
+サーバーに接続後のクライアント鍵生成・QRコード表示・iPhone側の設定手順は [Step7](docs/implementation-plan/step07-client.md) を参照してください。
+
+### 7. 停止（コスト最適化）
+
+使い終わったら、EIP解放・EC2停止のために以下を実行してください。
+
+```bash
+make stop-vpn
+```
 
 ## ライセンス
 

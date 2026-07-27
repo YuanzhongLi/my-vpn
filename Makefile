@@ -10,6 +10,33 @@ SUBDOMAIN = $$(cd $(TERRAFORM_DIR) && terraform output -raw subdomain)
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 
+init-backend: ## Deploy CloudFormation stack for Terraform S3 backend (first time only)
+	aws cloudformation deploy \
+		--profile $(AWS_PROFILE) \
+		--region $(AWS_REGION) \
+		--template-file cloudformation/terraform-backend.yaml \
+		--stack-name my-vpn-terraform-backend
+
+setup-config: ## Copy .envrc / terraform.tfvars from examples if not present yet
+	@if [ -f $(TERRAFORM_DIR)/.envrc ]; then \
+		echo "$(TERRAFORM_DIR)/.envrc already exists, skipping."; \
+	else \
+		cp $(TERRAFORM_DIR)/.envrc.example $(TERRAFORM_DIR)/.envrc && \
+		echo "Created $(TERRAFORM_DIR)/.envrc - please edit AWS_PROFILE."; \
+	fi
+	@if [ -f $(TERRAFORM_DIR)/terraform.tfvars ]; then \
+		echo "$(TERRAFORM_DIR)/terraform.tfvars already exists, skipping."; \
+	else \
+		cp $(TERRAFORM_DIR)/terraform.tfvars.example $(TERRAFORM_DIR)/terraform.tfvars && \
+		echo "Created $(TERRAFORM_DIR)/terraform.tfvars - please edit subdomain."; \
+	fi
+
+tf-init: ## Initialize Terraform
+	cd $(TERRAFORM_DIR) && terraform init
+
+tf-apply: ## Apply Terraform (create VPC/EC2/SecurityGroup/Route53 etc.)
+	cd $(TERRAFORM_DIR) && terraform apply
+
 start-vpn: ## Start VPN (EC2 + EIP + DNS)
 	@INSTANCE_ID=$(INSTANCE_ID) && \
 	ZONE_ID=$(ZONE_ID) && \
@@ -89,4 +116,16 @@ ssm-vpn: ## Connect to VPN instance via SSM Session Manager
 dns-ns-show: ## Show Route53 NS records for DNS delegation
 	@cd $(TERRAFORM_DIR) && terraform output -json route53_vpn_name_servers | jq -r '.[]'
 
-.PHONY: help start-vpn stop-vpn status-vpn ssm-vpn dns-ns-show
+add-client: ## Add a WireGuard client peer and print its config + QR code (usage: make add-client NAME=client1 IP=10.0.0.2)
+	@NAME=$${NAME:-client1} && \
+	IP=$${IP:-10.0.0.2} && \
+	INSTANCE_ID=$(INSTANCE_ID) && \
+	SUBDOMAIN=$(SUBDOMAIN) && \
+	SCRIPT="set -euo pipefail; cd /etc/wireguard; command -v qrencode >/dev/null 2>&1 || dnf install -y qrencode >/dev/null; umask 077; wg genkey | tee $${NAME}_private.key | wg pubkey > $${NAME}_public.key; wg set wg0 peer \$$(cat $${NAME}_public.key) allowed-ips $${IP}/32; wg-quick save wg0; printf '[Interface]\nPrivateKey = %s\nAddress = $${IP}/32\nDNS = 1.1.1.1, 1.0.0.1\n\n[Peer]\nPublicKey = %s\nEndpoint = $${SUBDOMAIN}:51820\nAllowedIPs = 0.0.0.0/0, ::/0\nPersistentKeepalive = 25\n' \"\$$(cat $${NAME}_private.key)\" \"\$$(cat server_public.key)\" > $${NAME}.conf; echo '--- QR CODE ---'; qrencode -t ansiutf8 < $${NAME}.conf; echo '--- CONF ---'; cat $${NAME}.conf; rm -f $${NAME}_private.key $${NAME}.conf" && \
+	CMD_ID=$$($(AWS) ssm send-command --cli-input-json "$$(jq -n --arg id "$$INSTANCE_ID" --arg s "$$SCRIPT" '{InstanceIds:[$$id], DocumentName:"AWS-RunShellScript", Parameters:{commands:[$$s]}}')" --query 'Command.CommandId' --output text) && \
+	echo "Running on $$INSTANCE_ID (command $$CMD_ID) ..." && \
+	while STATUS=$$($(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'Status' --output text 2>/dev/null); [ "$$STATUS" = "InProgress" ] || [ "$$STATUS" = "Pending" ]; do sleep 2; done && \
+	$(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'StandardOutputContent' --output text && \
+	$(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'StandardErrorContent' --output text
+
+.PHONY: help init-backend setup-config tf-init tf-apply start-vpn stop-vpn status-vpn ssm-vpn dns-ns-show add-client
