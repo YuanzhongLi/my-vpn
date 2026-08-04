@@ -146,4 +146,28 @@ remove-client: ## Remove a registered WireGuard client peer (usage: make remove-
 	$(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'StandardOutputContent' --output text && \
 	$(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'StandardErrorContent' --output text
 
-.PHONY: help init-backend setup-config tf-init tf-apply start-vpn stop-vpn status-vpn ssm-vpn dns-ns-show add-client list-clients remove-client
+setup-monitoring: ## (Re-)install the wg-monitor timer on the running EC2 without a full terraform apply
+	@INSTANCE_ID=$(INSTANCE_ID) && \
+	CMD_ID=$$($(AWS) ssm send-command --cli-input-json "$$(jq -n --arg id "$$INSTANCE_ID" --rawfile s scripts/wg-monitor-setup.sh '{InstanceIds:[$$id], DocumentName:"AWS-RunShellScript", Parameters:{commands:[$$s]}}')" --query 'Command.CommandId' --output text) && \
+	while STATUS=$$($(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'Status' --output text 2>/dev/null); [ "$$STATUS" = "InProgress" ] || [ "$$STATUS" = "Pending" ]; do sleep 2; done && \
+	$(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'StandardOutputContent' --output text && \
+	$(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'StandardErrorContent' --output text
+
+tail-logs: ## Tail the wg-monitor log in real time (Ctrl+C to stop)
+	@INSTANCE_ID=$(INSTANCE_ID) && \
+	echo "Tailing wg-monitor.log on $$INSTANCE_ID (Ctrl+C to stop) ..." && \
+	$(AWS) ssm start-session --target $$INSTANCE_ID \
+		--document-name AWS-StartInteractiveCommand \
+		--parameters command="sudo tail -f /var/log/wg-monitor.log"
+
+fetch-logs: ## Download wg-monitor.log (and rotated archives) to ./logs/<timestamp>/
+	@INSTANCE_ID=$(INSTANCE_ID) && \
+	OUTDIR=logs/$$(date -u +%Y%m%dT%H%M%SZ) && \
+	mkdir -p $$OUTDIR && \
+	SCRIPT="cd /var/log; { cat wg-monitor.log 2>/dev/null; for f in \$$(ls -1 wg-monitor.log.*.gz 2>/dev/null | sort); do zcat \$$f; done; } | base64 -w0" && \
+	CMD_ID=$$($(AWS) ssm send-command --cli-input-json "$$(jq -n --arg id "$$INSTANCE_ID" --arg s "$$SCRIPT" '{InstanceIds:[$$id], DocumentName:"AWS-RunShellScript", Parameters:{commands:[$$s]}}')" --query 'Command.CommandId' --output text) && \
+	while STATUS=$$($(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'Status' --output text 2>/dev/null); [ "$$STATUS" = "InProgress" ] || [ "$$STATUS" = "Pending" ]; do sleep 2; done && \
+	$(AWS) ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID --query 'StandardOutputContent' --output text | base64 -d > $$OUTDIR/wg-monitor.log && \
+	echo "Saved to $$OUTDIR/wg-monitor.log ($$(wc -l < $$OUTDIR/wg-monitor.log) lines)"
+
+.PHONY: help init-backend setup-config tf-init tf-apply start-vpn stop-vpn status-vpn ssm-vpn dns-ns-show add-client list-clients remove-client setup-monitoring tail-logs fetch-logs

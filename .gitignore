@@ -23,3 +23,6 @@
 # Environment
 .envrc
 .env
+
+# Fetched logs
+/logs/
