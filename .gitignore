@@ -1,3 +1,6 @@
+# Claude
+.claude/settings.local.json
+
 # WireGuard keys
 *.key
 *.conf
