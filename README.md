@@ -222,4 +222,4 @@ VPN経由の通信は「クライアント→EC2」のインバウンドは無�
 
 ## ライセンス
 
-Private
+[MIT License](LICENSE)
